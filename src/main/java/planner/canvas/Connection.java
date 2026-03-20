@@ -21,19 +21,15 @@ public class Connection {
         to   = nodeMap.get(toId);
     }
 
-    public void draw(Graphics2D g2) {
-        if (from == null || to == null) return;
-
+    /** Returns {src, dst} — the actual visual endpoints of this connection line. */
+    public Point[] visualEndpoints() {
         int fromCx = from.x + from.width  / 2;
         int fromCy = from.y + from.height / 2;
         int toCx   = to.x   + to.width    / 2;
         int toCy   = to.y   + to.height   / 2;
-
-        // Use center positions to determine left/right direction
         boolean toIsRight = toCx >= fromCx;
 
         Point src = null, dst = null;
-
         if (fromAnchorMember != null && from.memberRowCenterY.containsKey(fromAnchorMember)) {
             int anchorY = from.memberRowCenterY.get(fromAnchorMember);
             src = toIsRight ? new Point(from.x + from.width, anchorY) : new Point(from.x, anchorY);
@@ -42,8 +38,6 @@ public class Connection {
             int anchorY = to.memberRowCenterY.get(toAnchorMember);
             dst = toIsRight ? new Point(to.x, anchorY) : new Point(to.x + to.width, anchorY);
         }
-
-        // Fill in border points for any unanchored end
         if (src == null && dst == null) {
             src = from.borderPoint(toCx, toCy);
             dst = to.borderPoint(fromCx, fromCy);
@@ -52,6 +46,14 @@ public class Connection {
         } else if (dst == null) {
             dst = to.borderPoint(src.x, src.y);
         }
+        return new Point[]{src, dst};
+    }
+
+    public void draw(Graphics2D g2) {
+        if (from == null || to == null) return;
+
+        Point[] ep = visualEndpoints();
+        Point src = ep[0], dst = ep[1];
 
         g2.setColor(new Color(200, 200, 200));
         g2.setStroke(new BasicStroke(2f));

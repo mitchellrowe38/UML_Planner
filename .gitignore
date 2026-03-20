@@ -3,3 +3,4 @@ target/
 *.class
 *.pkg
 *.jar
+*.DS_Store

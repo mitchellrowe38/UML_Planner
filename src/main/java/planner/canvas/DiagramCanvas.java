@@ -438,10 +438,9 @@ public class DiagramCanvas extends JPanel {
     private Connection connectionAt(int x, int y) {
         for (Connection c : connections) {
             if (c.from == null || c.to == null) continue;
-            int cx1 = c.from.x + c.from.width  / 2;
-            int cy1 = c.from.y + c.from.height / 2;
-            int cx2 = c.to.x   + c.to.width    / 2;
-            int cy2 = c.to.y   + c.to.height   / 2;
+            Point[] ep = c.visualEndpoints();
+            int cx1 = ep[0].x, cy1 = ep[0].y;
+            int cx2 = ep[1].x, cy2 = ep[1].y;
             double len2 = (double)(cx2-cx1)*(cx2-cx1) + (double)(cy2-cy1)*(cy2-cy1);
             if (len2 == 0) continue;
             double t = Math.max(0, Math.min(1,
