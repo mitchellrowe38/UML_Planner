@@ -10,6 +10,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -66,6 +67,7 @@ Do not add explanation. Output raw JSON only.""";
 You are a helpful assistant for Java software design and architecture. The user may provide their current class diagram as JSON for context. Answer their questions clearly and concisely in plain text. Do not output JSON or code unless specifically asked.""";
 
     private String apiKey;
+    private final List<Map<String, Object>> chatHistory = new ArrayList<>();
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient   http   = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
@@ -164,6 +166,52 @@ You are a helpful assistant for Java software design and architecture. The user 
         return accumulated.toString().trim();
     }
 
+    // ── Multi-turn chat streaming (no extended thinking) ───────────────────────
+    private String streamChat(List<Map<String, Object>> messages, StreamCallback callback) throws Exception {
+        String body = mapper.writeValueAsString(Map.of(
+                "model",      MODEL,
+                "max_tokens", 8000,
+                "stream",     true,
+                "system",     CHAT_SYSTEM_PROMPT,
+                "messages",   messages
+        ));
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(ENDPOINT))
+                .header("x-api-key",           apiKey)
+                .header("anthropic-version",   "2023-06-01")
+                .header("content-type",        "application/json")
+                .timeout(Duration.ofSeconds(120))
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<java.util.stream.Stream<String>> response =
+                http.send(request, HttpResponse.BodyHandlers.ofLines());
+
+        if (response.statusCode() != 200) {
+            String err = response.body().collect(Collectors.joining("\n"));
+            throw new IOException("Claude API error " + response.statusCode() + ": " + err);
+        }
+
+        StringBuilder accumulated = new StringBuilder();
+        response.body().forEach(line -> {
+            if (!line.startsWith("data: ")) return;
+            String json = line.substring(6).trim();
+            if (json.equals("[DONE]")) return;
+            try {
+                JsonNode node  = mapper.readTree(json);
+                JsonNode delta = node.path("delta");
+                if ("text_delta".equals(delta.path("type").asText())) {
+                    String token = delta.path("text").asText();
+                    accumulated.append(token);
+                    if (callback != null) callback.onToken(token);
+                }
+            } catch (Exception ignored) {}
+        });
+
+        return accumulated.toString().trim();
+    }
+
     // ── Public API ─────────────────────────────────────────────────────────────
     public DiagramData generate(String userPrompt, StreamCallback callback) throws Exception {
         String text = streamText(SYSTEM_PROMPT, userPrompt, callback);
@@ -180,11 +228,19 @@ You are a helpful assistant for Java software design and architecture. The user 
         return mapper.readValue(text.substring(start, end + 1), DiagramData.class);
     }
 
-    /** Ask a plain-text question about the diagram. Returns the answer as a String. */
+    /** Ask a plain-text question about the diagram. Maintains conversation history across calls. */
     public String chat(String currentJson, String question, StreamCallback callback) throws Exception {
-        String userMessage = currentJson.isBlank()
+        String userContent = currentJson.isBlank()
                 ? question
                 : "Current diagram:\n" + currentJson + "\n\nQuestion: " + question;
-        return streamText(CHAT_SYSTEM_PROMPT, userMessage, callback);
+
+        chatHistory.add(Map.of("role", "user", "content", userContent));
+
+        String answer = streamChat(List.copyOf(chatHistory), callback);
+
+        chatHistory.add(Map.of("role", "assistant", "content", answer));
+        return answer;
     }
+
+    public void clearChatHistory() { chatHistory.clear(); }
 }

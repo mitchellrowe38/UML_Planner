@@ -29,6 +29,7 @@ public class AIPanel extends JPanel {
     private final JRadioButton   askRadio;
     private final JTextArea      responseArea;
     private final JScrollPane    responseScroll;
+    private final JButton        clearChatBtn;
 
     private static final Color BG        = new Color(32, 32, 32);
     private static final Color BG_FIELD  = new Color(45, 45, 45);
@@ -128,12 +129,28 @@ public class AIPanel extends JPanel {
         responseArea.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
 
         responseScroll = new JScrollPane(responseArea);
-        responseScroll.setBounds(10, 554, 268, 150);
+        responseScroll.setBounds(10, 554, 268, 210);
         responseScroll.setBorder(new LineBorder(new Color(55, 55, 55), 1));
         responseScroll.setBackground(new Color(28, 28, 28));
         responseScroll.getViewport().setBackground(new Color(28, 28, 28));
         responseScroll.setVisible(false);
         add(responseScroll);
+
+        clearChatBtn = new JButton("Clear Chat");
+        clearChatBtn.setBounds(10, 772, 268, 28);
+        clearChatBtn.setBackground(new Color(55, 55, 55));
+        clearChatBtn.setForeground(new Color(150, 150, 150));
+        clearChatBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        clearChatBtn.setFocusPainted(false);
+        clearChatBtn.setBorderPainted(false);
+        clearChatBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        clearChatBtn.addActionListener(e -> {
+            claude.clearChatHistory();
+            responseArea.setText("");
+        });
+        clearChatBtn.setVisible(false);
+        add(clearChatBtn);
+
 
     }
 
@@ -153,9 +170,16 @@ public class AIPanel extends JPanel {
 
         // ── Ask question mode ──────────────────────────────────────────────────
         if (askRadio.isSelected() || (autoRadio.isSelected() && looksLikeQuestion(prompt))) {
-            responseArea.setText("");
             responseScroll.setVisible(true);
+            clearChatBtn.setVisible(true);
             revalidate();
+
+            // Append "You:" label before streaming the answer
+            SwingUtilities.invokeLater(() -> {
+                if (!responseArea.getText().isEmpty()) responseArea.append("\n\n");
+                responseArea.append("You: " + prompt + "\n\nAI: ");
+                responseArea.setCaretPosition(responseArea.getDocument().getLength());
+            });
 
             new Thread(() -> {
                 try {
@@ -183,6 +207,8 @@ public class AIPanel extends JPanel {
 
         // ── Diagram generation / edit modes ────────────────────────────────────
         responseScroll.setVisible(false);
+        clearChatBtn.setVisible(false);
+        claude.clearChatHistory();
 
         // Auto: edit (replace) if canvas has content, otherwise generate fresh
         boolean doReplace = !addRadio.isSelected();
