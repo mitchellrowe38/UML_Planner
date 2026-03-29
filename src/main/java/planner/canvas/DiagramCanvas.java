@@ -33,8 +33,12 @@ public class DiagramCanvas extends JPanel {
 
     // ── View transform (zoom + pan) ────────────────────────────────────────────
     private double scale = 1.0;
-    private int    panX  = 0;
-    private int    panY  = 0;
+    private double panX  = 0;
+    private double panY  = 0;
+
+    // ── Project-reset callback ─────────────────────────────────────────────────
+    private Runnable onProjectReset;
+    public void setOnProjectReset(Runnable r) { this.onProjectReset = r; }
 
     // ── Mouse state machine ────────────────────────────────────────────────────
     private enum MouseMode { IDLE, DRAGGING_NODE, DRAWING_CONNECTION, PANNING }
@@ -71,10 +75,10 @@ public class DiagramCanvas extends JPanel {
 
         // Zoom centered on the cursor position
         addMouseWheelListener(e -> {
-            double factor = e.getPreciseWheelRotation() < 0 ? 1.03 : 1.0 / 1.03;
+            double factor = Math.pow(1.03, -e.getPreciseWheelRotation());
             double newScale = Math.max(0.15, Math.min(4.0, scale * factor));
-            panX = (int)(e.getX() - (e.getX() - panX) * newScale / scale);
-            panY = (int)(e.getY() - (e.getY() - panY) * newScale / scale);
+            panX = e.getX() - (e.getX() - panX) * newScale / scale;
+            panY = e.getY() - (e.getY() - panY) * newScale / scale;
             scale = newScale;
             repaint();
         });
@@ -145,7 +149,7 @@ public class DiagramCanvas extends JPanel {
             // Left-click on empty canvas: deselect and start panning
             setSelected(null);
             mouseMode  = MouseMode.PANNING;
-            dragOffset = new Point(e.getX() - panX, e.getY() - panY);
+            dragOffset = new Point(e.getX() - (int)panX, e.getY() - (int)panY);
             setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
         }
     }
@@ -533,7 +537,10 @@ public class DiagramCanvas extends JPanel {
         repaint();
     }
 
-    public void newDiagram() { clearAll(); }
+    public void newDiagram() {
+        clearAll();
+        if (onProjectReset != null) onProjectReset.run();
+    }
 
     public void applyDiagram(DiagramData data, boolean replace) {
         pushUndo();
@@ -806,6 +813,7 @@ public class DiagramCanvas extends JPanel {
                 }
             }
             repaint();
+            if (onProjectReset != null) onProjectReset.run();
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, "Load failed: " + ex.getMessage());
         }

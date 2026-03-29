@@ -23,6 +23,7 @@ public class AppWindow extends JFrame {
 
         DiagramCanvas canvas = new DiagramCanvas();
         AIPanel       ai     = new AIPanel(canvas);
+        canvas.setOnProjectReset(ai::clearChat);
         Toolbar       tb     = new Toolbar(canvas, ai::scanProject);
 
         add(tb,     BorderLayout.NORTH);

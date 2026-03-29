@@ -184,11 +184,38 @@ public class AIPanel extends JPanel {
             new Thread(() -> {
                 try {
                     String currentJson = hasContent ? mapper.writeValueAsString(current) : "";
-                    claude.chat(currentJson, prompt, token ->
+                    String answer = claude.chat(currentJson, prompt, token ->
                             SwingUtilities.invokeLater(() -> {
                                 responseArea.append(token);
                                 responseArea.setCaretPosition(responseArea.getDocument().getLength());
                             }));
+                    // Check if the AI embedded a diagram update
+                    int diagStart = answer.lastIndexOf("<diagram>");
+                    int diagEnd   = answer.lastIndexOf("</diagram>");
+                    if (diagStart >= 0 && diagEnd > diagStart) {
+                        String json = answer.substring(diagStart + 9, diagEnd).trim();
+                        int jStart = json.indexOf('{'), jEnd = json.lastIndexOf('}');
+                        if (jStart >= 0 && jEnd > jStart) {
+                            try {
+                                DiagramData data = mapper.readValue(
+                                        json.substring(jStart, jEnd + 1), DiagramData.class);
+                                SwingUtilities.invokeLater(() -> {
+                                    // Strip the raw <diagram> block from the display
+                                    String text = responseArea.getText();
+                                    int s = text.lastIndexOf("<diagram>");
+                                    int e = text.lastIndexOf("</diagram>");
+                                    if (s >= 0 && e > s) {
+                                        responseArea.setText(
+                                                text.substring(0, s).stripTrailing()
+                                                + text.substring(e + 10));
+                                        responseArea.setCaretPosition(
+                                                responseArea.getDocument().getLength());
+                                    }
+                                    canvas.applyDiagram(data, true);
+                                });
+                            } catch (Exception ignored) {}
+                        }
+                    }
                     SwingUtilities.invokeLater(() -> {
                         statusLabel.setForeground(new Color(90, 160, 90));
                         statusLabel.setText("Done.");
@@ -208,6 +235,7 @@ public class AIPanel extends JPanel {
         // ── Diagram generation / edit modes ────────────────────────────────────
         responseScroll.setVisible(false);
         clearChatBtn.setVisible(false);
+        String chatContext = claude.getChatContext(); // capture before clearing
         claude.clearChatHistory();
 
         // Auto: edit (replace) if canvas has content, otherwise generate fresh
@@ -217,14 +245,16 @@ public class AIPanel extends JPanel {
         new Thread(() -> {
             try {
                 DiagramData data;
+                String instruction = chatContext.isEmpty() ? prompt
+                        : "Context from prior conversation:\n" + chatContext + "\n\nInstruction: " + prompt;
                 if (useEdit) {
-                    data = claude.edit(mapper.writeValueAsString(current), prompt, token ->
+                    data = claude.edit(mapper.writeValueAsString(current), instruction, token ->
                             SwingUtilities.invokeLater(() -> statusLabel.setText("Streaming...")));
                 } else {
-                    String fullPrompt = prompt;
+                    String fullPrompt = instruction;
                     if (hasContent && addRadio.isSelected()) {
                         fullPrompt = "Current diagram:\n" + mapper.writeValueAsString(current)
-                                + "\n\nInstruction: " + prompt;
+                                + "\n\nInstruction: " + instruction;
                     }
                     data = claude.generate(fullPrompt, token ->
                             SwingUtilities.invokeLater(() -> statusLabel.setText("Streaming...")));
@@ -335,6 +365,12 @@ public class AIPanel extends JPanel {
                 result.add(f);
             }
         }
+    }
+
+    public void clearChat() {
+        claude.clearChatHistory();
+        responseArea.setText("");
+        clearChatBtn.setVisible(false);
     }
 
     private JRadioButton radio(String text) {

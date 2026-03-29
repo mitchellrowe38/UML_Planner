@@ -64,7 +64,11 @@ You are a Java class diagram editor. You will receive the current diagram as JSO
 Do not add explanation. Output raw JSON only.""";
 
     private static final String CHAT_SYSTEM_PROMPT = """
-You are a helpful assistant for Java software design and architecture. The user may provide their current class diagram as JSON for context. Answer their questions clearly and concisely in plain text. Do not output JSON or code unless specifically asked.""";
+You are a helpful assistant for Java software design and architecture. The user may provide their current class diagram as JSON for context. Answer their questions clearly and concisely in plain text.
+
+When the user asks you to add, modify, or remove classes, fields, methods, or connections, output the complete updated diagram JSON wrapped in <diagram> tags (JSON on its own line, closing tag on its own line). Use the same schema as the current diagram — include ALL existing classes plus your changes. Precede the tags with a brief plain-text explanation of what changed. The app will apply the diagram automatically.
+
+Do not output raw JSON outside of <diagram> tags.""";
 
     private String apiKey;
     private final List<Map<String, Object>> chatHistory = new ArrayList<>();
@@ -243,4 +247,22 @@ You are a helpful assistant for Java software design and architecture. The user 
     }
 
     public void clearChatHistory() { chatHistory.clear(); }
+
+    /** Returns the chat conversation as plain text for use as context in edit/generate calls. */
+    public String getChatContext() {
+        if (chatHistory.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (Map<String, Object> msg : chatHistory) {
+            String role    = (String) msg.get("role");
+            String content = (String) msg.get("content");
+            // Strip the "Current diagram: ..." preamble injected into user messages
+            if ("user".equals(role) && content.contains("\n\nQuestion: ")) {
+                content = content.substring(content.indexOf("\n\nQuestion: ") + 12);
+            } else if ("user".equals(role) && content.startsWith("Current diagram:") && !content.contains("\n\nQuestion: ")) {
+                continue; // diagram-only message with no question, skip
+            }
+            sb.append("user".equals(role) ? "User: " : "Assistant: ").append(content).append("\n");
+        }
+        return sb.toString().trim();
+    }
 }
